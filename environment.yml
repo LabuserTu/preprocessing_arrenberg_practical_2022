@@ -22,6 +22,8 @@ dependencies:
   - freetype=2.10.4=hd328e21_0
   - fsspec=2022.2.0=pyhd3eb1b0_0
   - giflib=5.2.1=h62dcd97_0
+  - h5py=3.6.0=py39h3de5c98_0
+  - hdf5=1.10.6=h7ebc959_0
   - icc_rt=2019.0.0=h0cc432a_1
   - icu=68.2=h0e60522_0
   - imagecodecs=2021.8.26=py39ha1f97ea_0
