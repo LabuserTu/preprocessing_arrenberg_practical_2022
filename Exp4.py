@@ -8,7 +8,6 @@ from scipy import ndimage as ndi
 from scipy.signal import find_peaks
 from copy import copy
 import numpy as np
-import matplotlib.pyplot as plt
 import h5py as h5
 import pandas as pd
 import matplotlib.pyplot as plt
