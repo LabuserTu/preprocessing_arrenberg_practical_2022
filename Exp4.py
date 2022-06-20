@@ -12,12 +12,86 @@ import h5py as h5
 import pandas as pd
 import matplotlib.pyplot as plt
 from skimage import io
+import logging
+
+def ca_prep(config):
+    logger = logging.getLogger('ca_prep')
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    sh.setLevel(logging.INFO)
+
+    default_config = {
+        'working_dir': None,
+        'ca_filename': None,
+        'timeline_filename': None,
+        'stimulus_filename': None,
+        'binsize': 60,
+        'stepsize': 40,
+        'show_motion_correction_result': True,
+        'segmentation_params': {
+            'hpfiltSig': .1,
+            'localThreKerSize': 9,
+            'smoothSig': 3,
+            'binaryThre': .5,
+            'minSizeLim': 20,
+            'maxSizeLim': 500,
+            'bgKerSize': 2,
+            'fgKerSize': 1
+        },
+        'show_segmentation_result': True,
+        'display_traces': True,
+        'save_h5': True,
+    }
+
+    default_config.update(config)
+    config = default_config
+    required_field_name = ['working_dir', 'ca_filename', 'timeline_filename', 'stimulus_filename']
+    if all([config[i] is not None for i in required_field_name]):
+        logger.info('Loading Ca movie')
+        ca_movie = load_ca_movie(config['working_dir'] + config['ca_filename'])
+        if config['show_motion_correction_result']:
+            logger.info('Start motion correction, corrected std image will be shown')
+        else:
+            logger.info('Start motion correction, corrected std image will NOT be shown')
+        reg_frames, std_image = motion_correction(ca_movie, binsize=config['binsize'], stepsize=config['stepsize'],show_result=config['show_motion_correction_result'])  # 10, 10
+        if config['show_segmentation_result']:
+            logger.info('Running auto ROI detection, segmentation result will be shown')
+        else:
+            logger.info('Running auto ROI detection, segmentation result will NOT be shown')
+        roi_mask = cell_segmentation(std_image, config['segmentation_params'],show_segmentation_result=config['show_segmentation_result'])
+        if config['display_traces']:
+            logger.info('Extracting calcium traces from Ca movie, extracted Ca traces will be plotted')
+        else:
+            logger.info('Extracting calcium traces from Ca movie, extracted Ca traces will NOT be plotted')
+        raw_ca_traces = extract_calcium_signals(roi_mask, reg_frames, display_traces=config['display_traces'])
+        logger.info('Aligning stimulus parameter to ca traces')
+        stim_array = align_stimulus_to_ca_frames(timefn=config['working_dir'] + config['timeline_filename'], stim_fn=config['working_dir'] + config['stimulus_filename'])
+        roi_id = np.unique(roi_mask)[1:]
+        formatted = pd.DataFrame(np.array(raw_ca_traces).T, columns=roi_id)
+        for k, v in stim_array.items():
+            formatted["stim_" + k] = v
+        if config['save_h5']:
+            save_fn = config['ca_filename'].split('.')[0]
+            save_full_path = config['working_dir']+"processed_"+save_fn+'.h5'
+            h5io = h5.File(save_full_path,'w')
+            h5io.create_dataset('STD image',data=std_image)
+            h5io.create_dataset('ROI mask',data=roi_mask)
+            h5io.close()
+            formatted.to_hdf(save_full_path,'stim_ca_traces')
+            logger.info('Save processed data into h5 files: {}'.format(save_full_path))
+        logger.info('Preprocessing finished')
+        return formatted
+    else:
+        logger.critical('At least one of the following fields are not set: {}'.format(required_field_name))
+        return None
 
 def load_ca_movie(fn):
     return np.array(io.imread(fn))
 
 # function for motion correction (registration) of calcium frames (tiff-stack)
-def motion_correction(raw_frames, binsize=500, stepsize=250):
+def motion_correction(raw_frames, binsize=500, stepsize=250, show_result=True):
     if binsize is not None:
         binsize = binsize
     if stepsize is not None:
@@ -39,14 +113,15 @@ def motion_correction(raw_frames, binsize=500, stepsize=250):
         i += stepsize
     reg_frames = regTifImg
     std_image = np.std(reg_frames, axis=0)
-    fig_name = 'Registration_STD_image'
-    fig, ax = plt.subplots(1, 2, figsize=(16, 8), num=fig_name)
-    ax[0].set_title('Raw STD image')
-    ax[0].imshow(np.std(raw_frames, axis=0))
-    ax[1].set_title('Registered STD image')
-    ax[1].imshow(std_image)
-    fig.tight_layout()
-    plt.show()
+    if show_result:
+        fig_name = 'Registration_STD_image'
+        fig, ax = plt.subplots(1, 2, figsize=(16, 8), num=fig_name)
+        ax[0].set_title('Raw STD image')
+        ax[0].imshow(np.std(raw_frames, axis=0))
+        ax[1].set_title('Registered STD image')
+        ax[1].imshow(std_image)
+        fig.tight_layout()
+        plt.show()
     return reg_frames, std_image
 
 
@@ -54,7 +129,7 @@ rnorm = lambda x: (x - x.min()) / (x.max() - x.min())
 
 
 # function for cell segmentation based on watershed algorithm
-def cell_segmentation(std_image, segmentation_params_arg=None):
+def cell_segmentation(std_image, segmentation_params_arg=None,show_segmentation_result=True):
     segmentation_params = {
         'hpfiltSig': .1,
         'localThreKerSize': 25,
@@ -107,12 +182,13 @@ def cell_segmentation(std_image, segmentation_params_arg=None):
 
     roi_mask = sorted_labels
 
-    fig_name = 'sizeFilter'
-    fig = plt.figure(figsize=(16, 8), num=fig_name)
-    plt.title('ROI Map')
-    plt.imshow(std_image / 40 + 40 * np.squeeze(np.abs(np.gradient(sorted_labels)).sum(axis=0) > 0))
-    fig.tight_layout()
-    plt.show()
+    if show_segmentation_result:
+        fig_name = 'sizeFilter'
+        fig = plt.figure(figsize=(16, 8), num=fig_name)
+        plt.title('ROI Map')
+        plt.imshow(std_image / 40 + 40 * np.squeeze(np.abs(np.gradient(sorted_labels)).sum(axis=0) > 0))
+        fig.tight_layout()
+        plt.show()
 
     return roi_mask
 
