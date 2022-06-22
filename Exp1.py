@@ -56,9 +56,9 @@ class OkrProcessor:
     def compute_okr_statistics(self, slope_thre=2, movWinSize=5, processed_data={}):
         if processed_data:
              self.le_saccade = processed_data['le_saccade']
-             self.re_saccade = processed_data['le_saccade']
-             self.le_slowphase = processed_data['le_saccade']
-             self.re_slowphase = processed_data['le_saccade']
+             self.re_saccade = processed_data['re_saccade']
+             self.le_slowphase = processed_data['le_slowphase']
+             self.re_slowphase = processed_data['re_slowphase']
         else:
             self.detect_saccade(slope_thre, movWinSize)
         okr_statistic = pd.DataFrame(
@@ -69,6 +69,12 @@ class OkrProcessor:
             phase_diff = np.diff(np.array(self.phase_idx_array == i, dtype=int))
             st_pos = np.where(phase_diff == 1)[0] + 1
             ed_pos = np.where(phase_diff == -1)[0] + 1
+            if len(ed_pos) == 0:
+                ed_pos = np.array([len(phase_diff)])
+            if st_pos[0]>ed_pos[0]:
+                st_pos_buffer = st_pos
+                st_pos = ed_pos*1
+                ed_pos = st_pos_buffer*1
             repeat_i = 0
             for j, k in zip(st_pos, ed_pos):
                 iter_repeat_statistic = {}
