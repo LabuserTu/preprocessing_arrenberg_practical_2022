@@ -1,5 +1,5 @@
 # preprocessing_arrenberg_practical_2022
-authors: Yue Zhang, David Burkhardt | AG Arrenberg
+authors: Yue Zhang, David Burkhardt (AG Arrenberg)
 
 Install an Anaconda distribution of Python (https://www.anaconda.com/products/distribution) -- Choose Python 3.x and your operating system. 
 
